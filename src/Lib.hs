@@ -11,11 +11,12 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeFamilies          #-}
-
-
-module Lib
-    ( someFunc
-    ) where
+module Lib 
+    ( SHandle,
+      reactive,
+      cmapSF,
+    )
+where
 
 
 import Apecs
@@ -25,6 +26,7 @@ import Linear.V2
 import Control.Concurrent
 import Control.Monad
 import Debug.Trace
+import Control.Monad.IO.Class
 import GHC.Generics
 import Data.TreeDiff.Class
 import Data.TreeDiff.Pretty
@@ -35,28 +37,40 @@ import Unsafe.Coerce
 
 
 -----------------------------------------------------------
-newtype SHandle a b = SHandle (IORef b, ReactHandle (Event (SF a b)) b)
+-- | A handle to be used to react in the System monad.
+newtype SHandle a b 
+    = SHandle {- PRIVATE CONSTRUCTOR -} 
+          (IORef b, ReactHandle (Event (SF a b)) b)
 
 
 -----------------------------------------------------------
-type ApecsConstraints w a b = 
-        ( b ~ Apecs.Core.Elem (Storage b),
-          a ~ Apecs.Core.Elem (Storage a),
-          Apecs.Core.ExplGet IO (Storage a),
-          Apecs.Core.ExplSet IO (Storage b),
-          Apecs.Core.ExplMembers IO (Storage a),
-          Has w IO a,
-          Has w IO b
-        )
+-- | Constructor for the SHandle.
+reactive ::
+    (MonadIO m) =>
+    (a -> SF a b) ->
+    a ->
+    b ->
+    SystemT w m (SHandle a b)
+{-# INLINABLE reactive #-}
+reactive initSF initialState initialInput =
+    liftIO do
+        ref    <- newIORef initialInput
+        handle <- reactInit (pure NoEvent) (actuate ref) switcher
+        return (SHandle (ref, unsafeCoerce handle))
+  where
+    actuate ref handle updated pos = do
+        when updated (writeIORef ref pos) 
+        pure updated
+    switcher = proc ev -> drSwitch (initSF initialState) -< (initialState, ev)
 
 -----------------------------------------------------------
--- | 
+-- | Consumer of the SHandle.
 cmapSF :: 
-    ApecsConstraints w a b =>
-    SHandle a b ->
+    (MonadIO m, Get w m cx, Members w m cx, Set w m cy)=>
+    SHandle cx cy ->
     DTime -> 
-    (a -> SF a b) -> 
-    System w ()
+    (cx -> SF cx cy) -> 
+    SystemT w m ()
 {-# INLINABLE cmapSF #-}
 cmapSF (SHandle (ref, handle)) dt fsf = do
     cmapM 
@@ -68,89 +82,4 @@ cmapSF (SHandle (ref, handle)) dt fsf = do
                 _ <- react handle (dt, Nothing)
                 readIORef ref
 
-
------------------------------------------------------------
--- |
-reactive ::
-    (a -> SF a b) ->
-    a ->
-    b ->
-    System w (SHandle a b)
-{-# INLINABLE reactive #-}
-reactive initSF initialState initialInput =
-    liftIO do
-        ref    <- newIORef initialInput
-        handle <- reactInit (pure NoEvent) (actuate ref) switcher
-        return (SHandle (ref, unsafeCoerce handle))
-  where
-    actuate ref handle updated pos = do
-        when updated (writeIORef ref pos) 
-        pure updated
-    switcher = proc ev -> do 
-        drSwitch (initSF initialState) -< (initialState, ev)
-
-
------------------------------------------------------------------
--------------------- usage ----------------------------------
-
-newtype Position = Position (V2 Double) deriving Show
-newtype Velocity = Velocity (V2 Double) deriving Show
-
-data Flying = Flying
-
-makeWorldAndComponents "Asteroids" [''Position, ''Velocity, ''Flying]
-
-
------------------------------------------------------------
-myGame :: SHandle (Position, Velocity) Position -> System Asteroids ()
-myGame h = do
-    liftIO (threadDelay 10000)
-    cmapSF h 0.01 position
-
-
------------------------------------------------------------
-someFunc :: IO ()
-someFunc = do
-    asteroids <- initAsteroids
-    runSystem app asteroids
-  where
-    app = do
-        newEntity (Position 0, Velocity 1)
-        newEntity (Position 2, Velocity 1)
-        newEntity (Position 1, Velocity 2)
-
-        cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p)
-
-        h <- reactive position (Position 0, Velocity 0) (Position 0) 
-
-        --forever (myGame h >> (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p)))
-
-        myGame h >> (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p))
-        newEntity (Position 100, Velocity 1)
-
-        myGame h >> (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p))
-        newEntity (Position 10, Velocity 1)
-
-        myGame h >> (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p))
-        myGame h >> (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p))
-        myGame h >> (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p))
-        myGame h >> (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p))
-
-
------------------------------------------------------------
-position :: (Position, Velocity) -> SF a Position 
-position (Position x0, Velocity v0) =
-    proc input -> do 
-        x1 <- (arr (+x0) <<< integral) -< v0
-        returnA -< Position x1
-
-
------------------------------------------------------------
-instance (Eq a, Floating a) => VectorSpace (V2 a) a where
-  zeroVector = L.zero
-  (*^) = (L.*^)
-  --(^) = (L.^)
-  negateVector = L.negated
-  (^+^) = (L.^+^)
-  (^-^) = (L.^-^)
-  dot = L.dot
+-- TODO convert the other functions like cfold
