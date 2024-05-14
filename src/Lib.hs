@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE ConstraintKinds     #-}
 {-# LANGUAGE BlockArguments     #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -18,6 +19,7 @@ module Lib
 
 
 import Apecs
+import qualified Apecs.Core
 import FRP.Yampa
 import Linear.V2
 import Control.Concurrent
@@ -32,39 +34,60 @@ import Linear    as L
 import Unsafe.Coerce
 
 
+-----------------------------------------------------------
+newtype SHandle a b = SHandle (IORef b, ReactHandle (Event (SF a b)) b)
 
 
 -----------------------------------------------------------
-cmapSF (ref, handle) dt fsf = do
+type ApecsConstraints w a b = 
+        ( b ~ Apecs.Core.Elem (Storage b),
+          a ~ Apecs.Core.Elem (Storage a),
+          Apecs.Core.ExplGet IO (Storage a),
+          Apecs.Core.ExplSet IO (Storage b),
+          Apecs.Core.ExplMembers IO (Storage a),
+          Has w IO a,
+          Has w IO b
+        )
+
+-----------------------------------------------------------
+-- | 
+cmapSF :: 
+    ApecsConstraints w a b =>
+    SHandle a b ->
+    DTime -> 
+    (a -> SF a b) -> 
+    System w ()
+{-# INLINABLE cmapSF #-}
+cmapSF (SHandle (ref, handle)) dt fsf = do
     cmapM 
         $ \components -> do
             liftIO do
-                -- TODO this is need to make it work, not sure why. find out
+                -- TODO this is need to make it work, not sure why. find out probably because of the
+                -- switch with delay
                 _ <- react handle (0, Just (Event (fsf components)))
                 _ <- react handle (dt, Nothing)
                 readIORef ref
 
 
 -----------------------------------------------------------
+-- |
 reactive ::
-    (t -> SF () b) ->
-    t ->
+    (a -> SF a b) ->
+    a ->
     b ->
-    System w (Payload x b)
+    System w (SHandle a b)
+{-# INLINABLE reactive #-}
 reactive initSF initialState initialInput =
     liftIO do
         ref    <- newIORef initialInput
         handle <- reactInit (pure NoEvent) (actuate ref) switcher
-        return (ref,unsafeCoerce $ handle)
+        return (SHandle (ref, unsafeCoerce handle))
   where
     actuate ref handle updated pos = do
         when updated (writeIORef ref pos) 
         pure updated
     switcher = proc ev -> do 
-        drSwitch (initSF initialState) -< ((), ev)
-
-
-type Payload a b = (IORef b, ReactHandle (Event a) ())
+        drSwitch (initSF initialState) -< (initialState, ev)
 
 
 -----------------------------------------------------------------
@@ -79,7 +102,7 @@ makeWorldAndComponents "Asteroids" [''Position, ''Velocity, ''Flying]
 
 
 -----------------------------------------------------------
-myGame :: Payload (SF a Position) Position -> System Asteroids ()
+myGame :: SHandle (Position, Velocity) Position -> System Asteroids ()
 myGame h = do
     liftIO (threadDelay 10000)
     cmapSF h 0.01 position
