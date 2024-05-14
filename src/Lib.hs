@@ -12,9 +12,9 @@
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeFamilies          #-}
 module Lib 
-    ( SHandle,
-      reactive,
-      cmapSF,
+    ( CHandle,
+      newCHandle,
+      cmapHandle,
     )
 where
 
@@ -33,46 +33,46 @@ import Data.TreeDiff.Pretty
 import Data.IORef
 import Control.Concurrent.MVar
 import Linear    as L
-import Unsafe.Coerce
 
 
 -----------------------------------------------------------
--- | A handle to be used to react in the System monad.
-newtype SHandle a b 
-    = SHandle {- PRIVATE CONSTRUCTOR -} 
-          (IORef b, ReactHandle (Event (SF a b)) b)
+-- | A "component handle" to be used to react in the System monad.
+newtype CHandle cx cy 
+    = CHandle {- PRIVATE CONSTRUCTOR -} 
+          (IORef cy, ReactHandle (Event (SF cx cy)) cy)
+instance Show (CHandle cx cy) where
+    show _ = "CHandle(...)"
 
 
 -----------------------------------------------------------
--- | Constructor for the SHandle.
-reactive ::
-    (MonadIO m) =>
-    (a -> SF a b) ->
-    a ->
-    b ->
-    SystemT w m (SHandle a b)
-{-# INLINABLE reactive #-}
-reactive initSF initialState initialInput =
+-- | Constructor for the component handle.
+newCHandle :: (MonadIO m) => SystemT w m (CHandle cx cy)
+{-# INLINABLE newCHandle #-}
+newCHandle =
     liftIO do
-        ref    <- newIORef initialInput
+        ref    <- newIORef (let x = x in x)
         handle <- reactInit (pure NoEvent) (actuate ref) switcher
-        return (SHandle (ref, unsafeCoerce handle))
+        return (CHandle (ref, handle))
   where
     actuate ref handle updated pos = do
         when updated (writeIORef ref pos) 
         pure updated
-    switcher = proc ev -> drSwitch (initSF initialState) -< (initialState, ev)
+    switcher = proc ev -> drSwitch (constant (let x = x in x)) -< ((let x = x in x), ev)
+
 
 -----------------------------------------------------------
--- | Consumer of the SHandle.
-cmapSF :: 
-    (MonadIO m, Get w m cx, Members w m cx, Set w m cy)=>
-    SHandle cx cy ->
-    DTime -> 
-    (cx -> SF cx cy) -> 
+-- | Consumer of the component handle.
+cmapHandle :: 
+    ( MonadIO   m
+    , Members w m cx
+    , Get     w m cx
+    , Set     w m cy
+    ) =>
+    CHandle cx cy ->
+    (DTime, cx -> SF cx cy) -> 
     SystemT w m ()
-{-# INLINABLE cmapSF #-}
-cmapSF (SHandle (ref, handle)) dt fsf = do
+{-# INLINABLE cmapHandle #-}
+cmapHandle (CHandle (ref, handle)) (dt, fsf) = do
     cmapM 
         $ \components -> do
             liftIO do

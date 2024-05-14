@@ -32,11 +32,19 @@ import Linear    as L
 import Unsafe.Coerce
 
 
+-----------------------------------------------------------
 newtype Position = Position (V2 Double) deriving Show
+
+
+-----------------------------------------------------------
 newtype Velocity = Velocity (V2 Double) deriving Show
 
+
+-----------------------------------------------------------
 data Flying = Flying
 
+
+-----------------------------------------------------------
 makeWorldAndComponents "Asteroids" [''Position, ''Velocity, ''Flying]
 
 
@@ -47,32 +55,19 @@ main = do
     runSystem app asteroids
   where
     app = do
-        newEntity (Position 0, Velocity 1)
-        newEntity (Position 2, Velocity 1)
-        newEntity (Position 1, Velocity 2)
+        -- TODO how the backends fit in this situation here?
+        -- brickHdl <- liftIO $ reactInitBrick ...
+        -- cfold ... \x -> liftIO $ react brickHdl (0.1, x) 
+        posHdl <- newCHandle
+        newEntity (Position 0 , Velocity 1)
+        newEntity (Position 50, Velocity (-1))
+        cmapHandle posHdl (10, positionSF)
+        newEntity (Position 100, Velocity (-1))
+        cmapHandle posHdl (10, positionSF)
+        (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p))
 
-        cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p)
-
-        h <- reactive position (Position 0, Velocity 0) (Position 0) 
-
-        --forever (myGame h >> (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p)))
-
-        myGame h >> (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p))
-        newEntity (Position 100, Velocity 1)
-
-        myGame h >> (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p))
-        newEntity (Position 10, Velocity 1)
-
-        myGame h >> (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p))
-        myGame h >> (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p))
-        myGame h >> (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p))
-        myGame h >> (cmapM_ $ \(Position p, Entity e) -> liftIO . print $ (e, p))
-    myGame :: SHandle (Position, Velocity) Position -> System Asteroids ()
-    myGame h = do
-        liftIO (threadDelay 10000)
-        cmapSF h 0.01 position
-    position :: (Position, Velocity) -> SF a Position 
-    position (Position x0, Velocity v0) =
+    positionSF :: (Position, Velocity) -> SF a Position 
+    positionSF (Position x0, Velocity v0) =
         proc input -> do 
             x1 <- (arr (+x0) <<< integral) -< v0
             returnA -< Position x1
