@@ -11,7 +11,7 @@
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeFamilies          #-}
 
-import Lib
+import Apecs.Yampa
 import Apecs
 import FRP.Yampa
 import Data.Text as Text
@@ -39,38 +39,23 @@ makeWorldAndComponents "World" [''Position, ''Velocity]
 -----------------------------------------------------------
 main :: IO ()
 main = do
-    asteroids <- initWorld
-    runSystem myApp asteroids
+    world <- initWorld
+    runSystem myApp world
   where
+    myApp :: System World ()
     myApp = do
-
-        posHdl <- newCHandle
-        fooHdl <- newCHandle
-        let brickSF = proc (a :: [(Position,Entity)]) -> do t <- time -< (); returnA -< txt (Text.pack (show t) <> ":" <> Text.pack (show a))
-        callbackHandle <- liftIO $ reactInit (pure NoEvent) (\_ _ xs -> pure False) returnA
-        brickHdl <- liftIO $ reactInitBrick [] brickSF callbackHandle
-
-        _ <- newEntity (Position 0 , Velocity 1)
-        _ <- newEntity (Position 50, Velocity (-1))
-        cmapHandle posHdl (10, positionSF)
-        _ <- newEntity (Position 100, Velocity (-1))
-        cmapHandle posHdl (10, positionSF)
-        --cmapM_ \(Position p, Entity e) -> liftIO . print $ (e, p)
-        _ <- newEntity (Position 200, Velocity (-10))
-
-        forever do
-            liftIO (threadDelay 100000)
-            cmapHandle posHdl (0.1, positionSF)
-            xs <- cfoldHandle fooHdl (0.1, \acc (Position p, Entity e) -> pure ((Position p, Entity e) : acc)) []
-            liftIO $ react brickHdl (0.1, Just xs) 
-       
+        newEntity_ (Position 0,Velocity 1)
+        newEntity_ (Position 40,Velocity 1)
+        newEntity_ (Position 100,Velocity 1)
+        cmapSF positionSF 10
+        cmapM \(Position p) -> liftIO (print p)
         pure ()
 
-    positionSF :: (Position, Velocity) -> SF a Position 
-    positionSF (Position x0, Velocity v0) =
-        proc ____input -> do 
-            x1 <- (arr (+x0) <<< integral) -< v0
-            returnA -< Position x1
+    positionSF :: SF (Position, Velocity) Position 
+    positionSF =
+        proc (Position x0, Velocity v0) -> do 
+            dx <- integral -< v0
+            returnA -< Position (x0 + dx)
 
 
 -----------------------------------------------------------
