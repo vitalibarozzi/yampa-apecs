@@ -4,20 +4,15 @@ cabal-version: 2.2
 --
 -- see: https://github.com/sol/hpack
 
-name:           yampa-apecs
+name:           apecs-yampa
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/yampa-apecs#readme>
 homepage:       https://github.com/githubuser/yampa-apecs#readme
 bug-reports:    https://github.com/githubuser/yampa-apecs/issues
 author:         Author name here
 maintainer:     example@example.com
 copyright:      2024 Author name here
 license:        BSD-3-Clause
-license-file:   LICENSE
 build-type:     Simple
-extra-source-files:
-    README.md
-    CHANGELOG.md
 
 source-repository head
   type: git
@@ -27,9 +22,9 @@ library
   exposed-modules:
       Lib
   other-modules:
-      Paths_yampa_apecs
+      Paths_apecs_yampa
   autogen-modules:
-      Paths_yampa_apecs
+      Paths_apecs_yampa
   hs-source-dirs:
       src
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
@@ -38,42 +33,28 @@ library
     , apecs
     , base >=4.7 && <5
     , linear
+    , text
     , tree-diff
-  default-language: Haskell2010
-
-executable yampa-apecs-exe
-  main-is: Main.hs
-  other-modules:
-      Paths_yampa_apecs
-  autogen-modules:
-      Paths_yampa_apecs
-  hs-source-dirs:
-      app
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      Yampa
-    , apecs
-    , base >=4.7 && <5
-    , linear
-    , tree-diff
-    , yampa-apecs
   default-language: Haskell2010
 
 test-suite yampa-apecs-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Paths_yampa_apecs
+      Paths_apecs_yampa
   autogen-modules:
-      Paths_yampa_apecs
+      Paths_apecs_yampa
   hs-source-dirs:
       test
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       Yampa
     , apecs
+    , apecs-yampa
     , base >=4.7 && <5
+    , brick
     , linear
+    , text
     , tree-diff
-    , yampa-apecs
+    , yampa-brick
   default-language: Haskell2010
