@@ -38,5 +38,3 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - apecs-yampa
-    - yampa-brick
-    - brick

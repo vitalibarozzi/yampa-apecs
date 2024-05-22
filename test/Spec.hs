@@ -17,9 +17,6 @@ import FRP.Yampa
 import Data.Text as Text
 import Linear.V2
 import Linear    as L
-import FRP.Yampa.Brick
-import Brick
-import Brick.Widgets.Core
 import Control.Concurrent
 import Control.Monad
 
