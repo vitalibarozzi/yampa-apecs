@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE LambdaCase     #-}
+{-# LANGUAGE BangPatterns     #-}
 {-# LANGUAGE ConstraintKinds     #-}
 {-# LANGUAGE BlockArguments     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -24,41 +23,61 @@ import Data.IORef
 
 
 -----------------------------------------------------------
-type ApecsHandle cx cy = ReactHandle (cx, Event (SF cx cy)) (IORef cy, cy)
+-- | Internal type.
+newtype ApecsHandle cx cy = ApecsHandle 
+    ( IORef cy
+    , ReactHandle (cx, Event (SF cx cy)) cy
+    )
 
 
 -----------------------------------------------------------
-reactInitSF :: (MonadIO m) => SF cx cy -> cx -> SystemT w m (IORef cy, ApecsHandle cx cy)
-reactInitSF sf cx = do
-    ref <- liftIO $ newIORef undefined
-    handle <- liftIO $ Yampa.reactInit (pure (cx, NoEvent)) (\_ updated (ref_,cy) -> when updated (writeIORef ref_ cy) >> pure updated) (pure ref &&& rSwitch sf)
-    return (ref, handle)
+-- | Constructor.
+reactInitSF :: (MonadIO m) => SF cx cy -> cx -> SystemT w m (ApecsHandle cx cy)
+{-# INLINE reactInitSF #-}
+reactInitSF !sf cx = do
+    liftIO do
+        !ref <- newIORef (error "never called")
+        !hdl <- Yampa.reactInit (pure (cx, Event sf)) (actuate ref) (drSwitch sf)
+        return (ApecsHandle (ref, hdl))
+  where
+    actuate !ref _ !updated cy = do
+        when updated (writeIORef ref cy) 
+        pure updated
 
 
 -----------------------------------------------------------
+-- | Use an SF to map all entities that have the components
+-- cx and cy associated with a handler.
 cmapSF :: 
     forall w m cx cy. 
+
     ( Members w m cx
+    , Get     w m cx
+
     , Members w m cy
-    , Members w m (IORef cy)
+    , Get     w m cy
+    , Set     w m cy
+
     , Members w m (ApecsHandle cx cy)
-    , Get w m (IORef cy)
-    , Get w m (ApecsHandle cx cy)
-    , Get w m cx
-    , Get w m cy
-    , Set w m cy
+    , Get     w m (ApecsHandle cx cy)
     , MonadIO m
     ) => 
-    (DTime, Event (SF cx cy)) -> 
+    DTime -> 
+    SF cx cy -> 
     SystemT w m ()
-cmapSF (dt,esf) = do
+{-# INLINABLE cmapSF #-}
+cmapSF dt sf = do
     cmapM 
-        (\( hdl :: ReactHandle (cx, Event (SF cx cy)) (IORef cy, cy)
-          , ref :: IORef cy
-          , cx  :: cx
-          , cy  :: cy
-          ) -> 
-        do updated <- liftIO (react hdl (dt, Just (cx, esf)))
-           if updated 
-               then liftIO (readIORef ref) 
-               else pure cy)
+        \( ApecsHandle (ref, hdl) :: ApecsHandle cx cy
+         , cx                     :: cx
+         , cy                     :: cy
+         ) -> 
+        liftIO do
+            updated1 <- react hdl (0, Just (cx, Event sf))
+            if updated1
+               then do
+                    !updated2 <- react hdl (dt, Nothing)
+                    if updated2
+                       then readIORef ref
+                       else pure cy
+               else pure cy

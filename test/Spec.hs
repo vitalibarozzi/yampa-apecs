@@ -29,8 +29,10 @@ newtype Position = Position (V2 Double) deriving Show
 newtype Velocity = Velocity (V2 Double) deriving Show
 
 
+type Foo = ApecsHandle (Position,Velocity) Position
+
 -----------------------------------------------------------
-makeWorldAndComponents "World" [''Position, ''Velocity]
+makeWorldAndComponents "World" [''Position, ''Velocity, ''Foo]
 
 
 -----------------------------------------------------------
@@ -41,12 +43,17 @@ main = do
   where
     myApp :: System World ()
     myApp = do
-        newEntity_ (Position 0,Velocity 1)
-        newEntity_ (Position 40,Velocity 1)
-        newEntity_ (Position 100,Velocity 1)
-        cmapSF positionSF 10
-        cmapM \(Position p) -> liftIO (print p)
-        pure ()
+
+        let foo = cmapM \(Position p) -> liftIO (putStrLn $ show p <> "\n")
+        
+        entityHdl <- reactInitSF positionSF (Position 0, Velocity 0)
+        newEntity_ (Position 0, Velocity 1, entityHdl)
+
+        cmapSF 10    positionSF >> foo
+        cmapSF 10.1  positionSF >> foo
+        cmapSF 0     positionSF >> foo
+        cmapSF (-13) positionSF >> foo
+        cmapSF 13    positionSF >> foo
 
     positionSF :: SF (Position, Velocity) Position 
     positionSF =
