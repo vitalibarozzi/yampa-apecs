@@ -13,6 +13,7 @@ dependencies:
 - linear
 - tree-diff
 - text
+- template-haskell
 
 ghc-options:
 - -Wall
